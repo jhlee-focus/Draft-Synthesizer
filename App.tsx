@@ -1,20 +1,74 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { ManuscriptDraft, Paragraph } from './types';
 import DraftColumn from './components/DraftColumn';
 import FinalColumn from './components/FinalColumn';
-import { polishManuscript } from './services/geminiService';
-import { Download, Layout, Sparkles, Trash2, FolderOpen } from 'lucide-react';
+import { Download, Layout, Trash2, FolderOpen, Save } from 'lucide-react';
+
+const STORAGE_KEY = 'draft-synthesizer-v1';
 
 const App: React.FC = () => {
-  const [drafts, setDrafts] = useState<ManuscriptDraft[]>([
-    { id: 1, title: '초안 1', customTitle: '', paragraphs: [] },
-    { id: 2, title: '초안 2', customTitle: '', paragraphs: [] },
-    { id: 3, title: '초안 3', customTitle: '', paragraphs: [] },
-  ]);
-  const [finalParagraphs, setFinalParagraphs] = useState<Paragraph[]>([]);
-  const [dismissedParagraphIds, setDismissedParagraphIds] = useState<Set<string>>(new Set());
-  const [isPolishing, setIsPolishing] = useState(false);
+  // --- State Initialization from LocalStorage ---
+  const [drafts, setDrafts] = useState<ManuscriptDraft[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.drafts) return parsed.drafts;
+      } catch (e) {
+        console.error("Failed to parse drafts from storage", e);
+      }
+    }
+    return [
+      { id: 1, title: '초안 1', customTitle: '', paragraphs: [] },
+      { id: 2, title: '초안 2', customTitle: '', paragraphs: [] },
+      { id: 3, title: '초안 3', customTitle: '', paragraphs: [] },
+    ];
+  });
+
+  const [finalParagraphs, setFinalParagraphs] = useState<Paragraph[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.finalParagraphs) return parsed.finalParagraphs;
+      } catch (e) {
+        console.error("Failed to parse finalParagraphs from storage", e);
+      }
+    }
+    return [];
+  });
+
+  const [dismissedParagraphIds, setDismissedParagraphIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.dismissedParagraphIds) return new Set(parsed.dismissedParagraphIds);
+      } catch (e) {
+        console.error("Failed to parse dismissedParagraphIds from storage", e);
+      }
+    }
+    return new Set();
+  });
+
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const globalFileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Persistence Effect ---
+  useEffect(() => {
+    setSaveStatus('saving');
+    const timer = setTimeout(() => {
+      const stateToSave = {
+        drafts,
+        finalParagraphs,
+        dismissedParagraphIds: Array.from(dismissedParagraphIds)
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+      setSaveStatus('saved');
+    }, 500); // Debounce saves
+
+    return () => clearTimeout(timer);
+  }, [drafts, finalParagraphs, dismissedParagraphIds]);
 
   /**
    * Parses text into paragraphs using two or more newlines as the separator.
@@ -98,6 +152,28 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const reflectedIds = useMemo(() => {
+    return new Set(finalParagraphs.map(p => p.originalId).filter(Boolean));
+  }, [finalParagraphs]);
+
+  const addAllFromDraft = useCallback((draftIdx: number) => {
+    const sourceDraft = drafts[draftIdx];
+    const toAdd = sourceDraft.paragraphs.filter(p => !reflectedIds.has(p.id));
+    
+    setFinalParagraphs(prev => {
+      const newEntries = toAdd.map(p => ({
+        ...p,
+        id: `final-${Date.now()}-${Math.random()}`,
+        originalId: p.id
+      }));
+      return [...prev, ...newEntries];
+    });
+  }, [drafts, reflectedIds]);
+
+  const removeAllFromDraft = useCallback((draftIdx: number) => {
+    setFinalParagraphs(prev => prev.filter(p => p.sourceDraftIndex !== draftIdx));
+  }, []);
+
   const removeParagraphFromFinal = useCallback((id: string) => {
     setFinalParagraphs(prev => prev.filter(p => p.id !== id));
   }, []);
@@ -125,25 +201,9 @@ const App: React.FC = () => {
   }, []);
 
   const clearFinal = () => {
-    setFinalParagraphs([]);
-  };
-
-  const handlePolish = async () => {
-    if (finalParagraphs.length === 0) return;
-    setIsPolishing(true);
-    const fullText = finalParagraphs.map(p => p.text).join('\n\n');
-    const polished = await polishManuscript(fullText);
-    
-    const polishedParagraphs = polished.split(/\n\s*\n+/)
-      .map(p => p.trim())
-      .filter(p => p !== '')
-      .map((text, idx) => ({
-        id: `polished-${idx}-${Date.now()}`,
-        text: text
-      }));
-    
-    setFinalParagraphs(polishedParagraphs);
-    setIsPolishing(false);
+    if (window.confirm('최종 원고를 모두 삭제하시겠습니까?')) {
+      setFinalParagraphs([]);
+    }
   };
 
   const exportText = () => {
@@ -157,10 +217,6 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const reflectedIds = useMemo(() => {
-    return new Set(finalParagraphs.map(p => p.originalId).filter(Boolean));
-  }, [finalParagraphs]);
-
   return (
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-50">
@@ -168,7 +224,15 @@ const App: React.FC = () => {
           <div className="bg-indigo-600 p-2 rounded-lg">
             <Layout className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold text-slate-800 tracking-tight">Draft Synthesizer <span className="text-indigo-600">Pro</span></h1>
+          <div className="flex flex-col">
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-tight">Draft Synthesizer <span className="text-indigo-600">Pro</span></h1>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'saved' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+              <span className="text-slate-400 font-medium uppercase tracking-wider">
+                {saveStatus === 'saved' ? '브라우저에 저장됨' : '저장 중...'}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -192,17 +256,9 @@ const App: React.FC = () => {
           <div className="w-px h-6 bg-slate-200 mx-1"></div>
 
           <button 
-            onClick={handlePolish}
-            disabled={isPolishing || finalParagraphs.length === 0}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-sm active:scale-95"
-          >
-            <Sparkles className={`w-4 h-4 ${isPolishing ? 'animate-spin' : ''}`} />
-            {isPolishing ? '다듬는 중...' : 'AI 문장 다듬기'}
-          </button>
-          <button 
             onClick={exportText}
             disabled={finalParagraphs.length === 0}
-            className="flex items-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95"
+            className="flex items-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95 shadow-sm"
           >
             <Download className="w-4 h-4" /> 내보내기
           </button>
@@ -220,6 +276,8 @@ const App: React.FC = () => {
                 onUpdateTitle={(newTitle) => updateDraftTitle(idx, newTitle)}
                 onDeleteParagraph={(paraId) => removeParagraphFromDraft(idx, paraId)}
                 onAddParagraph={addParagraphToFinal} 
+                onAddAll={() => addAllFromDraft(idx)}
+                onRemoveAll={() => removeAllFromDraft(idx)}
                 reflectedIds={reflectedIds}
                 dismissedIds={dismissedParagraphIds}
                 onToggleDismiss={toggleDismissParagraph}

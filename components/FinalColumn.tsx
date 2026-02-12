@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Paragraph } from '../types';
-import { GripVertical, X, PlusCircle, Check, Image as ImageIcon, Edit3 } from 'lucide-react';
+import { GripVertical, X, PlusCircle, Check, Image as ImageIcon, Edit3, FileText, LayoutList } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -17,10 +17,12 @@ interface Props {
 
 const FinalColumn: React.FC<Props> = ({ paragraphs, onRemove, onReorder, onUpdateText, onAddNew }) => {
   const [dropIndicator, setDropIndicator] = useState<{ index: number; position: 'top' | 'bottom' | null }>({ index: -1, position: null });
+  const [isGroupedView, setIsGroupedView] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    if (isGroupedView) return;
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
@@ -34,6 +36,7 @@ const FinalColumn: React.FC<Props> = ({ paragraphs, onRemove, onReorder, onUpdat
 
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
+    if (isGroupedView) return;
     const dataStr = e.dataTransfer.getData('application/json');
     const files = e.dataTransfer.files;
 
@@ -60,6 +63,7 @@ const FinalColumn: React.FC<Props> = ({ paragraphs, onRemove, onReorder, onUpdat
   };
 
   const handleMainDrop = (e: React.DragEvent) => {
+    if (isGroupedView) return;
     if (dropIndicator.index === -1) {
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
@@ -92,6 +96,8 @@ const FinalColumn: React.FC<Props> = ({ paragraphs, onRemove, onReorder, onUpdat
     }
   };
 
+  const fullCombinedText = paragraphs.map(p => p.text).join('\n\n');
+
   return (
     <div 
         className="h-full flex flex-col rounded-xl border border-indigo-200 bg-white shadow-lg overflow-hidden"
@@ -104,6 +110,21 @@ const FinalColumn: React.FC<Props> = ({ paragraphs, onRemove, onReorder, onUpdat
           <h3 className="font-bold text-indigo-900">최종 원고 (통합 영역)</h3>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            type="button"
+            onClick={() => setIsGroupedView(!isGroupedView)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 border ${
+              isGroupedView 
+              ? 'bg-indigo-600 text-white border-indigo-600' 
+              : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+            }`}
+          >
+            {isGroupedView ? <LayoutList className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+            {isGroupedView ? '단락으로 보기' : '묶어보기'}
+          </button>
+          
+          <div className="w-px h-6 bg-indigo-200 mx-1"></div>
+
           <input 
             type="file" 
             ref={imageInputRef} 
@@ -122,52 +143,64 @@ const FinalColumn: React.FC<Props> = ({ paragraphs, onRemove, onReorder, onUpdat
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar bg-slate-50/30">
-        <div className="space-y-4 max-w-3xl mx-auto min-h-full pb-20">
-          {paragraphs.map((p, index) => (
-            <div 
-                key={p.id}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, index)}
-                className="relative"
-            >
-              {dropIndicator.index === index && dropIndicator.position === 'top' && (
-                <div className="absolute -top-2 left-0 right-0 h-1 bg-indigo-500 rounded-full z-10 animate-pulse" />
-              )}
-              
-              <EditableParagraph 
-                p={p} 
-                index={index}
-                onRemove={onRemove} 
-                onUpdateText={onUpdateText} 
-              />
-
-              {dropIndicator.index === index && dropIndicator.position === 'bottom' && (
-                <div className="absolute -bottom-2 left-0 right-0 h-1 bg-indigo-500 rounded-full z-10 animate-pulse" />
-              )}
+        <div className="max-w-3xl mx-auto min-h-full pb-20">
+          {isGroupedView ? (
+            <div className="bg-white p-8 lg:p-12 rounded-2xl border border-slate-200 shadow-sm animate-in fade-in zoom-in-95 duration-300">
+               <div className="text-slate-800 leading-relaxed text-sm lg:text-base markdown-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                    {fullCombinedText || "*원고가 비어있습니다.*"}
+                  </ReactMarkdown>
+               </div>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-4">
+              {paragraphs.map((p, index) => (
+                <div 
+                    key={p.id}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, index)}
+                    className="relative"
+                >
+                  {dropIndicator.index === index && dropIndicator.position === 'top' && (
+                    <div className="absolute -top-2 left-0 right-0 h-1 bg-indigo-500 rounded-full z-10 animate-pulse" />
+                  )}
+                  
+                  <EditableParagraph 
+                    p={p} 
+                    index={index}
+                    onRemove={onRemove} 
+                    onUpdateText={onUpdateText} 
+                  />
 
-          {paragraphs.length === 0 && (
-            <div 
-                className="flex flex-col items-center justify-center py-20 px-10 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                    e.preventDefault();
-                    const dataStr = e.dataTransfer.getData('application/json');
-                    if (dataStr) {
-                        const data = JSON.parse(dataStr);
-                        if (data.type === 'new-paragraph') onAddNew(data.paragraph, 0);
-                    } else if (e.dataTransfer.files.length > 0) {
-                        handleImageFiles(e.dataTransfer.files, 0);
-                    }
-                }}
-            >
-              <div className="bg-indigo-100 text-indigo-500 p-4 rounded-full mb-4">
-                <PlusCircle className="w-8 h-8" />
-              </div>
-              <h4 className="text-slate-700 font-semibold mb-2">통합할 준비가 되었습니다</h4>
-              <p className="text-slate-500 text-sm leading-relaxed">단락이나 이미지를 이곳으로 드래그하여 배치하세요.</p>
+                  {dropIndicator.index === index && dropIndicator.position === 'bottom' && (
+                    <div className="absolute -bottom-2 left-0 right-0 h-1 bg-indigo-500 rounded-full z-10 animate-pulse" />
+                  )}
+                </div>
+              ))}
+
+              {paragraphs.length === 0 && (
+                <div 
+                    className="flex flex-col items-center justify-center py-20 px-10 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        const dataStr = e.dataTransfer.getData('application/json');
+                        if (dataStr) {
+                            const data = JSON.parse(dataStr);
+                            if (data.type === 'new-paragraph') onAddNew(data.paragraph, 0);
+                        } else if (e.dataTransfer.files.length > 0) {
+                            handleImageFiles(e.dataTransfer.files, 0);
+                        }
+                    }}
+                >
+                  <div className="bg-indigo-100 text-indigo-500 p-4 rounded-full mb-4">
+                    <PlusCircle className="w-8 h-8" />
+                  </div>
+                  <h4 className="text-slate-700 font-semibold mb-2">통합할 준비가 되었습니다</h4>
+                  <p className="text-slate-500 text-sm leading-relaxed">단락이나 이미지를 이곳으로 드래그하여 배치하세요.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -210,27 +243,33 @@ const EditableParagraph: React.FC<{
         }));
     };
 
+    const coordinate = p.sourceDraftIndex !== undefined && p.sourceParaIndex !== undefined 
+        ? `${p.sourceDraftIndex + 1}-${p.sourceParaIndex + 1}` 
+        : null;
+
     return (
         <div 
-            className={`flex gap-3 lg:gap-4 group bg-white p-4 lg:p-5 rounded-xl border shadow-sm transition-all relative overflow-hidden 
+            className={`flex gap-3 lg:gap-4 group bg-white p-4 lg:p-5 pt-8 lg:pt-9 rounded-xl border shadow-sm transition-all relative overflow-hidden 
                 ${isEditing ? 'ring-2 ring-indigo-100 border-indigo-400' : 'hover:border-indigo-300 border-slate-200 cursor-text'}`}
             onClick={() => !isEditing && setIsEditing(true)}
         >
+            {/* Coordinate Label */}
+            {coordinate && (
+                <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold border z-20 ${
+                    p.sourceDraftIndex === 0 ? 'bg-blue-100 text-blue-700 border-blue-200' : 
+                    p.sourceDraftIndex === 1 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
+                    'bg-amber-100 text-amber-700 border-amber-200'
+                }`}>
+                    {coordinate}
+                </div>
+            )}
+
             <div 
                 draggable={!isEditing}
                 onDragStart={handleDragStart}
                 className={`flex flex-col items-center gap-2 mt-1 shrink-0 ${isEditing ? 'opacity-30' : 'cursor-grab active:cursor-grabbing'}`}
             >
                 {!isEditing && <GripVertical className="w-5 h-5 text-slate-300" />}
-                {p.sourceDraftIndex !== undefined && (
-                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold ${
-                        p.sourceDraftIndex === 0 ? 'bg-blue-100 text-blue-700' : 
-                        p.sourceDraftIndex === 1 ? 'bg-emerald-100 text-emerald-700' : 
-                        'bg-amber-100 text-amber-700'
-                    }`}>
-                        {p.sourceDraftIndex + 1}
-                    </span>
-                )}
             </div>
             
             <div className="flex-1 min-w-0">
@@ -258,7 +297,7 @@ const EditableParagraph: React.FC<{
                     type="button"
                     onClick={(e) => {
                         e.preventDefault();
-                        e.stopPropagation(); // Stop parent onClick from firing
+                        e.stopPropagation();
                         onRemove(p.id);
                     }}
                     className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"

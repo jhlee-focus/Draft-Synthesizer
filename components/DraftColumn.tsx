@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ManuscriptDraft, Paragraph } from '../types';
-import { PlusCircle, Eye, EyeOff, FileText, GripVertical, Check, Clipboard, Upload, Edit3, Save, X } from 'lucide-react';
+import { PlusCircle, Eye, EyeOff, FileText, GripVertical, Check, Clipboard, Upload, Edit3, Save, X, ListPlus, ListX } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -14,13 +13,15 @@ interface Props {
   onUpdateTitle: (newTitle: string) => void;
   onDeleteParagraph: (id: string) => void;
   onAddParagraph: (p: Paragraph) => void;
+  onAddAll: () => void;
+  onRemoveAll: () => void;
   reflectedIds: Set<string>;
   dismissedIds: Set<string>;
   onToggleDismiss: (id: string) => void;
   colorClass: string;
 }
 
-const DraftColumn: React.FC<Props> = ({ index, draft, onUpdateContent, onUpdateTitle, onDeleteParagraph, onAddParagraph, reflectedIds, dismissedIds, onToggleDismiss, colorClass }) => {
+const DraftColumn: React.FC<Props> = ({ index, draft, onUpdateContent, onUpdateTitle, onDeleteParagraph, onAddParagraph, onAddAll, onRemoveAll, reflectedIds, dismissedIds, onToggleDismiss, colorClass }) => {
   const [isPreview, setIsPreview] = useState(false);
   const [isInputtingRaw, setIsInputtingRaw] = useState(false);
   const [rawText, setRawText] = useState('');
@@ -125,28 +126,49 @@ const DraftColumn: React.FC<Props> = ({ index, draft, onUpdateContent, onUpdateT
           </div>
         </div>
         
-        <div className="flex gap-1">
-          <button 
-            type="button"
-            onClick={handlePaste}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm active:scale-95"
-          >
-            <Clipboard className="w-3 h-3" /> 붙여넣기
-          </button>
-          <button 
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm active:scale-95"
-          >
-            <Upload className="w-3 h-3" /> 파일
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept=".txt,.md"
-            onChange={handleFileUpload}
-          />
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-1">
+            <button 
+              type="button"
+              onClick={handlePaste}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm active:scale-95"
+            >
+              <Clipboard className="w-3 h-3" /> 붙여넣기
+            </button>
+            <button 
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm active:scale-95"
+            >
+              <Upload className="w-3 h-3" /> 파일
+            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept=".txt,.md"
+              onChange={handleFileUpload}
+            />
+          </div>
+          
+          <div className="flex gap-1">
+            <button 
+              type="button"
+              onClick={onAddAll}
+              disabled={draft.paragraphs.length === 0}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-indigo-50 border border-indigo-100 rounded-md text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 transition-all active:scale-95 disabled:opacity-50"
+            >
+              <ListPlus className="w-3 h-3" /> 모두 선택
+            </button>
+            <button 
+              type="button"
+              onClick={onRemoveAll}
+              disabled={draft.paragraphs.length === 0}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-rose-50 border border-rose-100 rounded-md text-[10px] font-bold text-rose-700 hover:bg-rose-100 transition-all active:scale-95 disabled:opacity-50"
+            >
+              <ListX className="w-3 h-3" /> 모두 해제
+            </button>
+          </div>
         </div>
       </div>
       
@@ -200,7 +222,7 @@ const DraftColumn: React.FC<Props> = ({ index, draft, onUpdateContent, onUpdateT
                       type="button"
                       onClick={(e) => {
                           e.preventDefault();
-                          e.stopPropagation(); // Stop parent onClick from firing
+                          e.stopPropagation();
                           onDeleteParagraph(p.id);
                       }}
                       className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
